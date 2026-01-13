@@ -42,7 +42,7 @@ linkList = [Link(row.FROMNODENO, row.TONODENO, row.NO) for row in links.itertupl
 tellingenList = [Telling(row.Code, row.TEL_PW_TOTAAL, row.TEL_VR_TOTAAL) for row in tellingen.itertuples(index=False)]
 
 ## Maak obv de locpostdata een dictionary dat linkid's (key) mapt naar (een lijst van) locpost codes (value)
-locpost_dict = count_loc.groupby('LINKNO')['CODE'].apply(list).to_dict()
+locpost_dict = count_loc.groupby(['LINKNO','FROMNODENO','TONODENO'])['CODE'].apply(list).to_dict()
 
 ## Lijst met vorige en volgende links en lijst met locposten aanmaken voor elk link object
 for link in linkList:
@@ -50,7 +50,7 @@ for link in linkList:
     link.findNextLinks(linkList)
     link.findLocposten(locpost_dict, tellingenList)
     link.berekenIntensiteiten()
-
+#findLocposten nog aanpassen want nu wordt geen rekening gehouden met de rijrichting
 
 # %% LINKKETENS AANMAKEN: aaneenschakeling van links die elkaar opvolgen tot er een volgende knoop is 
     
@@ -87,11 +87,13 @@ links_not_in_ketens = [link for link in linkList if link not in links_in_ketens]
 # %% LOOP OM DE INTENSITEITEN VAN DE LINKKETENS TE EXTRAPOLEREN 
 ## De loop stopt wanneer er geen updates meer zijn
 aantalUpdates = 1
+iteratie = 0
 
 while aantalUpdates != 0:
+    iteratie += 1
     aantalUpdates = 0
     for linkketen in linkketenList: 
-        aantalUpdates += linkketen.extrapoleerIntensiteiten()
+        aantalUpdates += linkketen.extrapoleerIntensiteiten(iteratie)
     print(f"Aantal updates: {aantalUpdates}")
 
 ## Print het aantal linkketens die zijn bijgewerkt

@@ -29,14 +29,15 @@ Deze link heeft {len(self.tellingenList)} gelinkte locposten, {len(self.prevLink
     
     ## Definieer een methode om de locposten van deze link te vinden uit een dictionary
     def findLocposten(self, locpost_dict, tellingenList):
-        if self.linkNo in locpost_dict:
-            locpostList = locpost_dict[self.linkNo]
+        if (self.linkNo, self.startNode, self.endNode) in locpost_dict:
+            locpostList = locpost_dict[(self.linkNo, self.startNode, self.endNode)]
             self.tellingenList = [telling for locpost in locpostList for telling in tellingenList if telling.locpost == locpost]
         else:
             self.tellingenList = []
 
     def berekenIntensiteiten(self):
         ## Neem het gemiddelde van de tellingen voor deze link (indien 1 telling dan is het de telling zelf)
+        ## Indien we dit op meerdere manieren willen berekenen dan voegen we een extra laag toe aan de self.intensiteiten dictionary
         if len(self.tellingenList) > 0:
             self.intensiteiten["PW"] = sum(telling.tellingPW for telling in self.tellingenList) / len(self.tellingenList)
             self.intensiteiten["VR"] = sum(telling.tellingVR for telling in self.tellingenList) / len(self.tellingenList)
@@ -50,7 +51,9 @@ class Linkketen:
         self.startNode = links[0].startNode ## startnode van de eerste link in de keten
         self.endNode = links[-1].endNode ## eindnode van de laatste link in de keten
         self.bemeten = False
-        self.intensiteiten = {"PW": None, "VR": None, "Totaal": None, "Invulling": False} 
+        self.extrapolatieIn = False
+        self.extrapolatieUit = False
+        self.intensiteiten = {"0-init":{"PW": None, "VR": None, "Totaal": None}} 
         self.nextLinkketenList = []
         self.prevLinkketenList = []
 
@@ -68,15 +71,49 @@ class Linkketen:
     def berekenInitieleTelling(self):
         if self.bemeten:
             links_met_tellingen = [link for link in self.links if len(link.tellingenList) > 0]
-            self.intensiteiten["PW"] = sum(link.intensiteiten["PW"] for link in links_met_tellingen) / len(links_met_tellingen)
-            self.intensiteiten["VR"] = sum(link.intensiteiten["VR"] for link in links_met_tellingen) / len(links_met_tellingen)
-            self.intensiteiten["Totaal"] = sum(link.intensiteiten["Totaal"] for link in links_met_tellingen) / len(links_met_tellingen)
-            self.intensiteiten["Invulling"] = False
+            self.intensiteiten["0-init"]["PW"] = sum(link.intensiteiten["PW"] for link in links_met_tellingen) / len(links_met_tellingen)
+            self.intensiteiten["0-init"]["VR"] = sum(link.intensiteiten["VR"] for link in links_met_tellingen) / len(links_met_tellingen)
+            self.intensiteiten["0-init"]["Totaal"] = sum(link.intensiteiten["Totaal"] for link in links_met_tellingen) / len(links_met_tellingen)
+            self.intensiteiten["0-init"]["Berekening"] = "Waarde 1 link" if len(links_met_tellingen) == 1 else "Gemiddelde meerdere links"
 
-    def extrapoleerIntensiteiten(self):
+    def berekenInkomendeIntensiteit(self, voertuigType):
+        
+        # Eerste keuze is om de intensiteiten te berekenen obv "0-init" intensiteiten
+        # Wat als slechts een deel van de prevLinkketens bemeten is? Dan werken met geextrapoleerde waarden
+        # To do: eerste if statement verwijderen en een break toevoegen in de for loop wanneer een linkketen geen intensiteiten heeft
+        
+        if all(linkketen.bemeten for linkketen in self.prevLinkketenList):
+            # Sum the intensiteit[voertuigtype] for each linkketen in prevLinkketenList
+            inkomende_intensiteit = 0
+            
+            for linkketen in self.prevLinkketenList:
+                if linkketen.intensiteiten.get("0-init", {}).get(voertuigType) is not None:
+                    inkomende_intensiteit += linkketen.intensiteiten["0-init"][voertuigType]
+                    
+                    # Subtract the intensiteit[voertuigtype] for each linkketen in the nextLinkketenList 
+                    # of the linkketens of prevLinkketenList that are not the self linkketen
+                    for next_linkketen in linkketen.nextLinkketenList:
+                        if next_linkketen != self and next_linkketen.intensiteiten.get("0-init", {}).get(voertuigType) is not None:
+                            inkomende_intensiteit -= next_linkketen.intensiteiten["0-init"][voertuigType]
+            
+            return inkomende_intensiteit
+        
+        return None
+
+#     Initiele bemeting is geweten voor de loop, dus enkel extrapolities moeten gecheckt worden
+
+# If extrapolatieIn is False: 
+# 	berekenInkomendeIntensiteiten()
+	
+# If extrapolatieUit is False:
+# berekenUitgaandeIntensiteiten()
+    
+    # Fout corrigeren: indien lengte van prevLinkketenList = 1 maar die linkketen heeft meer dan 1 
+    # nextlink, dan is de berekening van de nieuwe intensiteit niet correct want met de uitstroom van de vorige linke wordt geen rekening gehouden
+    def extrapoleerIntensiteiten(self, iteratie):
         if self.bemeten == False:
             if all(linkketen.bemeten for linkketen in self.nextLinkketenList):
-                self.intensiteiten["PW"] = sum(linkketen.intensiteiten  ["PW"] for linkketen in self.nextLinkketenList)
+                self.intensiteiten["PW"] = sum(linkketen.intensiteiten["PW"] for linkketen in self.nextLinkketenList)
                 self.intensiteiten["VR"] = sum(linkketen.intensiteiten["VR"] for linkketen in self.nextLinkketenList)
                 self.intensiteiten["Totaal"] = sum(linkketen.intensiteiten["Totaal"] for linkketen in self.nextLinkketenList)
                 self.intensiteiten["Invulling"] = True
